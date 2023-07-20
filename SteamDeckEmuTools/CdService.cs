@@ -79,25 +79,36 @@ namespace SteamDeckEmuTools {
         }
 
         static public GroupBestPick PickBestFormatsForConversionInGroup(List<string> group) {
+            Debug.Assert(group.Count() > 0);
+            
+            var dataImages = GetDataImagesInGroup(group);
+
             string? imgLayoutFile = GetBestFileLayoutForConversionInGroup(group);
             string? imgDataFile = GetDataTrackInGroup(group);
             
             GroupBestPick? pick = null;
-
-            var dataImages = group.FindAll(o => imgExts.Contains(Path.GetExtension(o)));
+            
             if (dataImages.Count == 0) {
                 if (imgLayoutFile == null)
-                    Log.Logger.Error("There are no data img or layout in the group");
+                    Log.Logger.Error("\t# There are no data img or layout in the group");
                 else
-                    Log.Logger.Error($"The layout file {imgLayoutFile} do not have any data image file associated");
-                pick = null;
+                    Log.Logger.Error($"\t# The layout file  do not have any data image file associated");
             }
             else if (dataImages.Count > 1) {
-                if (imgLayoutFile == null)
-                    Log.Logger.Error("There is more than one img data file in the group");
-                else
-                    Log.Logger.Error($"There is more than one Data image associated to {imgLayoutFile} layoutfile");
-                pick = null;
+                if (imgLayoutFile == null) {
+                    Log.Logger.Error("\t# There is more than one img data file in the group. This is not valid if no cue file exists.");
+                }
+                else {
+                    Log.Logger.Information($"\t# There is more than one Track associated with the layoutfile");
+                    string? dataTrack = CdService.GetDataTrackInGroup(group);
+                    if(dataTrack==null) {
+                        Log.Logger.Information("\t# It was not possible to find the data track for this cd image");
+                     }
+                    else {
+                        Log.Logger.Information($"\t# We have selected the data track file -> {Path.GetFileName(dataTrack!)}");
+                        pick = new GroupBestPick(imgLayoutFile, dataTrack);
+                    }
+                }
             }
             else
                 pick = new GroupBestPick(imgLayoutFile,imgDataFile);
@@ -201,20 +212,6 @@ namespace SteamDeckEmuTools {
 
             return gameGroups;
         }
-
-        /*static public string GetBestDataImageForLayoutFile(string layoutFile) {
-            
-            if(IsCdLayout(layoutFile)) throw new ArgumentException($"{layoutFile} is not a layout file");
-            
-
-            var layoutFileFolder = Path.GetDirectoryName(layoutFile);
-            var fileNameWithNoExt = Path.GetFileNameWithoutExtension(layoutFileFolder);
-            List<List<string>> fileGroups = CdService.GetImageFiles(layoutFileFolder, fileNameWithNoExt);
-
-            GroupBestPick pick= GetBestFileFormatForConversion(fileGroups[0]);
-
-            return pick.ImgFile;
-        }*/
 
 
         static public bool VerifyCueFileDataImgPath(string cueFilePath) {

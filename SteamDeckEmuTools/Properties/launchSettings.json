@@ -2,7 +2,7 @@
   "profiles": {
     "SteamDeckEmuTools": {
       "commandName": "Project",
-      "commandLineArgs": "verify-cd-layouts --source-folder \"E:\\Downloads\\Downloading\\Sony - PlayStation (America) (Complete)\\roms\" --fix"
+      "commandLineArgs": "cd2chd --source-folder \"E:\\Downloads\\Downloading\\Sony - PlayStation (America) (Complete)\\roms\" --output-folder \"E:\\Downloads\\Downloading\\Sony - PlayStation (America) (Complete)\\roms\\converted\""
     }
   }
 }
