@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "SteamDeckEmuTools": {
+      "commandName": "Project",
+      "commandLineArgs": "verify-cd-layouts --source-folder \"E:\\Downloads\\Downloading\\Sony - PlayStation (America) (Complete)\\roms\" --fix"
+    }
+  }
+}
