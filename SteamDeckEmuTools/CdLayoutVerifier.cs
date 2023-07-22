@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -30,17 +32,6 @@ namespace SteamDeckEmuTools {
             return 0;
         }
 
-
-        static private void FixCueFileDataImgDataPath(string cueFilePath) {
-            bool isOk = CdService.VerifyCueFileDataImgPath(cueFilePath);
-            
-            if(!isOk) {
-                //string cdImage = CdService.GetBestDataImageForLayoutFile(cueFilePath);
-                string contents = File.ReadAllText(cueFilePath);
-                
-            }
-        }
-
         static private bool _VerifyLayoutFile(string layoutFilePath) {
             string ext = Path.GetExtension(layoutFilePath).ToLower();
             if(CdService.IsCdLayout(layoutFilePath)) {
@@ -57,7 +48,7 @@ namespace SteamDeckEmuTools {
             throw new FormatException("Unkown image format");
         }
 
-        static private bool _FixLayoutFile(string layoutFilePath, string dataTrack) {
+        static private bool _FixCueLayoutBinFile(string layoutFilePath, string dataTrack) {
             string ext = Path.GetExtension(layoutFilePath);
             if (ext != ".cue") {
                 Log.Logger.Information($"Only .cue layout files can be fixed. So {layoutFilePath} will stay the same");
@@ -72,21 +63,83 @@ namespace SteamDeckEmuTools {
             return true;
         }
 
+        static private bool GenerateCueFileForDataImage(string cueFilePath, string dataTrackFileName) {
+            string contents = $"FILE \"{Path.GetFileName(dataTrackFileName)}\" BINARY\r\n   TRACK 1 MODE2/2352\r\n   INDEX 1 00:00:00";
+            File.WriteAllText(cueFilePath, contents);            
+            return true;
+        }
+
+        /*static private bool FixGroupNames(List<string> group) {
+            foreach (string filePath in group) {
+                string folder = Path.GetDirectoryName(filePath);
+                string fileName = Path.GetFileName(filePath);
+
+                fileName = StringService.ConvertToASCIIStr(fileName);
+                File.Move(filePath, Path.Join(folder,fileName));
+            }
+            
+            //Fix Cue file now
+            CueFile cue = new CueFile()
+
+            return true;
+        }*/
+
+        private static void _FixGroup(List<string> group, GroupStateType groupState) {
+            List<string> layoutFiles = CdService.GetLayoutFilesInGroup(group);
+
+            if (groupState == GroupStateType.Empty) return;
+
+            string logingFileName = Path.GetFileName(group[0]);
+
+
+            if (groupState == GroupStateType.TooManyImgFormats ||
+                groupState == GroupStateType.NoDataTrack ||
+                groupState == GroupStateType.NoASCIICodes) {
+                Log.Logger.Warning(StringService.Indent($"Game {logingFileName} SKIPPED because it has uncoverable errors (see report)", 1));
+                return;
+            }
+            else if (groupState == GroupStateType.InvalidBinFile) {
+                string layoutFile = CdService.GetBestFileLayoutForConversionInGroup(group)!;
+                string dataTrack = CdService.GetDataTrackInGroup(group)!;
+
+                Log.Logger.Information(StringService.Indent($"Fixing Cue Bin file for game {logingFileName}", 1));
+                _FixCueLayoutBinFile(layoutFile, dataTrack);
+                Log.Logger.Information(StringService.Indent($"Fixed!", 1));
+            }
+            else if(groupState == GroupStateType.NoLayoutTrack) {
+                Log.Logger.Information(StringService.Indent($"Generating Cue file for game {logingFileName}", 1));
+                string layoutFile = Path.Join(Path.GetDirectoryName(group[0]), Path.GetFileNameWithoutExtension(group[0])+".cue");
+                string dataTrack = CdService.GetDataTrackInGroup(group)!;
+                GenerateCueFileForDataImage(layoutFile, dataTrack);
+            }
+
+        }
+
+
         private static void _ProcessBatchFolder(string sourceFiles, bool fix) {
             var bestVers = new List<GroupBestPick>();
 
             Log.Logger.Information("Generating image file groups...");
-            List<List<string>> groups = CdService.GetImageFiles(sourceFiles);
+            List<List<string>> groups = CdService.GetImageFileGroups(sourceFiles);
 
-            Log.Logger.Information("Checking cd images state...");
-            foreach (var group in groups) {
-                List<string> layoutFiles = CdService.GetLayoutFilesInGroup(group);
+            Log.Logger.Information("Verifying cd images...");
+            List<GroupStateType> groupsState = CdService.GetGroupStates(groups);
 
-                foreach (string layoutFile in layoutFiles) {
-                    _ProcessSingleImage(layoutFile, fix);
+            Log.Logger.Information("Groups report...");
+            CdService.LogGroupStates(groups, groupsState);
+
+            int gamesWithProbs = groupsState.Where(o=>o!=GroupStateType.Ok).Count();
+
+            if(gamesWithProbs > 0 && fix) {
+                Log.Logger.Information("Fixing problems...");
+                for (int i = 0; i < groupsState.Count; ++i) {
+                    List<string> group = groups[i];
+                    GroupStateType groupState = groupsState[i];
+
+                    if (groupState != GroupStateType.Ok) _FixGroup(group, groupState);
                 }
-
             }
+            
         }
 
         private static void _ProcessSingleImage(string cdImageFile,  bool fix) {
@@ -94,28 +147,23 @@ namespace SteamDeckEmuTools {
 
             string folder = Path.GetDirectoryName(cdImageFile)!;
             string nameNoExt= Path.GetFileNameWithoutExtension(cdImageFile);
-            List<List<string>> groups = CdService.GetImageFiles(folder!, nameNoExt);
+            List<List<string>> groups = CdService.GetImageFileGroups(folder!, nameNoExt);
 
             if (groups.Count > 1) throw new Exception("More than one group was created from the layout image. This is not possible.");
             if (groups.Count == 0) throw new Exception("No groups were created from the layout image. This is not possible.");
             
-            List<string> group = groups[0];
+            Log.Logger.Information("Verifying cd images...");
+            List<GroupStateType> groupsState = CdService.GetGroupStates(groups);
 
-            string? layoutFile = CdService.GetBestFileLayoutForConversionInGroup(groups[0]);
-            if (layoutFile != null) {
-                Log.Logger.Information("Checking cd image state...");
-                bool isOk = _VerifyLayoutFile(layoutFile);
-                if (!isOk) {
-                    Log.Logger.Information($"[State: BAD] {layoutFile}");
-                    if (fix) {
-                        Log.Logger.Information($"Fixing layout file {layoutFile}");
-                        string? dataTrack = CdService.GetDataTrackInGroup(group);
-                        if (dataTrack == null) throw new Exception("A layout file must always have an associated data image file");
-                        _FixLayoutFile(layoutFile, dataTrack);
-                    }
-                }
-                else
-                    Log.Logger.Information($"[State: GOOD] {layoutFile}");
+            List<string> group = groups[0];
+            GroupStateType groupState = CdService.GetGroupStates(groups)[0];
+
+            Log.Logger.Information("Groups report...");
+            CdService.LogGroupStates(groups, groupsState);
+
+            if (groupState!=GroupStateType.Ok && fix) {
+                Log.Logger.Information("Fixing problems...");
+                if(groupState != GroupStateType.Ok) _FixGroup(group, groupState);
             }
 
         }

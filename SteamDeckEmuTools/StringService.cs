@@ -25,5 +25,14 @@ namespace SteamDeckEmuTools {
             }
             return true;
         }
+
+        public static string Indent(string s, int indentLevel) {
+            StringBuilder sb = new StringBuilder();
+            sb.Append(new string(' ', indentLevel * 4));
+            sb.Append("# ");
+            sb.Append(s);
+            return sb.ToString();
+        }
     }
+
 }
