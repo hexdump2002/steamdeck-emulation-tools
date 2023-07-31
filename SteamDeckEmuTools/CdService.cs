@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -20,6 +21,7 @@ namespace SteamDeckEmuTools {
     class CdService {
         static readonly string[] validExtensions = { ".iso", ".bin", ".cue", ".img", ".ccd", ".sub" };
         static readonly string[] imgExts = { ".iso", ".img", ".bin" };
+        static readonly string[] noLayoutNeededExts = { ".iso", ".gdi" };
         static readonly string[] imgLayoutExts = { ".cue", ".ccd" };
 
         static private int _getFilePoints(string filePath) {
@@ -27,20 +29,15 @@ namespace SteamDeckEmuTools {
 
             switch (ext) {
                 case ".cue":
+                case ".ccd":
                     return 100;
                 case ".bin":
                 case ".iso":
-                    return 70;
-                    break;
-                case ".ccd":
-                    return 40;
-                    break;
                 case ".img":
-                    return 30;
-                    break;
+                case ".gdi":
+                    return 70;
                 case ".sub":
                     return 0;
-                    break;
                 default:
                     throw new Exception($"Unknow extension {ext}");
 
@@ -65,7 +62,7 @@ namespace SteamDeckEmuTools {
             int bestVerPoints = 0;
 
             foreach (string file in group) {
-                if (CdService.IsCdLayout(file)) {
+                if (CdService.IsCdLayout(file) || CdService.IsNotLayoutFileNeededExtension(Path.GetExtension(file))) {
                     int points = _getFilePoints(file);
                     if (points > bestVerPoints) {
                         bestVer = file;
@@ -93,7 +90,7 @@ namespace SteamDeckEmuTools {
             string? imgLayoutFile = GetBestFileLayoutForConversionInGroup(group);
             string? imgDataFile = GetDataTrackInGroup(group);
 
-            string loggingName = Path.GetFileNameWithoutExtension(group[0]);
+            string loggingName = Path.GetFileNameWithoutExtension(CdService.GetBestFileLayoutForConversionInGroup(group));
 
             GroupBestPick? pick = null;
 
@@ -147,6 +144,10 @@ namespace SteamDeckEmuTools {
 
         static public bool IsCdLayoutExtension(string ext) {
             return imgLayoutExts.Contains(ext.ToLower());
+        }
+
+        static public bool IsNotLayoutFileNeededExtension(string ext) {
+            return noLayoutNeededExts.Contains(ext.ToLower());
         }
 
 
@@ -220,6 +221,9 @@ namespace SteamDeckEmuTools {
             return false;
         }
 
+        static public string GetLogingNameInGroup(List<string> group) {
+            return Path.ChangeExtension(Path.GetFileName(CdService.GetBestFileLayoutForConversionInGroup(group)),null);
+        }
 
         static public void LogGroupStates(List<List<string>> groups, List<GroupStateType> groupsStates) {
             if (groups.Count != groupsStates.Count) throw new ArgumentException("Groups and groupStates must have same size");
@@ -237,8 +241,8 @@ namespace SteamDeckEmuTools {
             Log.Logger.Information($"There are {okGroups.Count} Ok Games and {errorGroupIndexes.Count} Games with errors");
 
             foreach(var okGroup in okGroups) {
-                string loggingName = Path.GetFileName(okGroup[0]);
-                Log.Logger.Information(StringService.Indent($"[OK] {loggingName} is OK", 1));
+                string logingFileName = GetLogingNameInGroup(okGroup);
+                Log.Logger.Information(StringService.Indent($"[OK] {logingFileName} is OK", 1));
             }
                
 
@@ -247,7 +251,7 @@ namespace SteamDeckEmuTools {
                 if (state == GroupStateType.Empty)
                     Log.Logger.Warning(StringService.Indent("An empty group has been generated. Check why, this must not happen.",1));
                 else {
-                    string loggingName = Path.GetFileName(groups[errGroupIndex][0]);
+                    string loggingName = GetLogingNameInGroup(groups[errGroupIndex]);
                     if (state == GroupStateType.NoLayoutTrack)
                         Log.Logger.Warning(StringService.Indent($"[ERROR] {loggingName} needs a layout file to be converted. Use verify command to detect and fix this problem.", 1));
                     else if (state == GroupStateType.NoDataTrack)
@@ -276,7 +280,7 @@ namespace SteamDeckEmuTools {
                     groupState = GroupStateType.Empty;
                 }
                 else {
-                    string loggingName = Path.GetFileName(group[0]);
+                    string logingFileName = Path.GetFileName(CdService.GetBestFileLayoutForConversionInGroup(group));
 
                     var extensionsInGroup = group.GroupBy(
                             file => Path.GetExtension(file),
@@ -285,11 +289,14 @@ namespace SteamDeckEmuTools {
 
                     if (extensionsInGroup.Where(o => IsCdImageDataExtension(o)).Count() == 0)
                         groupState = GroupStateType.NoDataTrack;
-                    else if (extensionsInGroup.Where(o => IsCdLayoutExtension(o)).Count() == 0)
-                        groupState = GroupStateType.NoLayoutTrack;
+                    else if (extensionsInGroup.Where(o => IsCdLayoutExtension(o)).Count() == 0) { //If there's no layout, and it contains just one image and it doesn't need layout it's ok
+                        if (!(group.Count() == 1 && extensionsInGroup.Where(o => IsNotLayoutFileNeededExtension(o)).Count() == 1)) {
+                            groupState = GroupStateType.NoLayoutTrack;
+                        }
+                    }
                     else if (extensionsInGroup.Where(o => IsCdImageDataExtension(o)).Count() > 1)
                         groupState = GroupStateType.TooManyImgFormats;
-                    else if (!StringService.IsASCII(loggingName))
+                    else if (!StringService.IsASCII(logingFileName))
                         groupState = GroupStateType.NoASCIICodes;
                     else {
                         string layoutFile = CdService.GetBestFileLayoutForConversionInGroup(group);

@@ -92,8 +92,8 @@ namespace SteamDeckEmuTools {
             return true;
         }
 
-        public CueBinFile GetFirstFileWithDataTrack() {
-            return _files.Where(o => o.Tracks.Any(o => o.Mode != "AUDIO")).First();
+        public CueBinFile? GetFirstFileWithDataTrack() {
+            return _files.Where(o => o.Tracks.Any(o => o.Mode != "AUDIO"))?.First();
         }
 
         public bool DoesDataFileExistInFolder(string folder) {

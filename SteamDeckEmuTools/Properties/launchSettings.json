@@ -2,7 +2,7 @@
   "profiles": {
     "SteamDeckEmuTools": {
       "commandName": "Project",
-      "commandLineArgs": "cd2chd --source-folder \"E:\\Downloads\\Downloading\\Sony - PlayStation (America) (Complete)\\roms\" --output-folder \"E:\\Downloads\\Downloading\\Sony - PlayStation (America) (Complete)\\roms\\converted\""
+      "commandLineArgs": "cd2chd --source-folder \"E:\\Downloads\\Downloading\\psx\" --output-folder \"E:\\Downloads\\Downloading\\psx\\converted\""
     }
   }
 }

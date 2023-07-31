@@ -89,7 +89,7 @@ namespace SteamDeckEmuTools {
 
             if (groupState == GroupStateType.Empty) return;
 
-            string logingFileName = Path.GetFileName(group[0]);
+            string logingFileName = Path.GetFileName(CdService.GetBestFileLayoutForConversionInGroup(group));
 
 
             if (groupState == GroupStateType.TooManyImgFormats ||
